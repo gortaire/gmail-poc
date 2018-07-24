@@ -6,6 +6,8 @@ const {google} = require('googleapis');
 const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
 const TOKEN_PATH = 'token.json';
 
+var sender = '';
+
 // Load client secrets from a local file.
 fs.readFile('credentials.json', (err, content) => {
   if (err) return console.log('Error loading client secret file:', err);
@@ -85,7 +87,8 @@ function listLabels(auth) {
     }
   }),
   gmail.users.messages.list({ 
-    userId: 'me' 
+    userId: 'me',
+    q:'has:attachment'
   }, (err, res) => {
       if (err) return console.log('The API returned an error: ' + err);
       const messages = res.data.messages;
@@ -104,14 +107,40 @@ function listLabels(auth) {
                 messageContent.headers.forEach((header) => {
                     //console.log('Message Headers [ ' + header.name + ':' + header.value + ' ]');
                     if(header.name === 'From'){
-                        console.log('Sent by: [' + header.value + ']');
-                        console.log('VALUES['+header.name.toString().split('<')+']');
+                        //console.log('Sent by: [' + header.value + ']');
+                        //EMAIL of the sender (recipient)
+                        //console.log('VALUES['+header.value.toString().split("<")[1].split(">")[0]+']');
+                        sender = header.value.toString().split("<")[1].split(">")[0].split("@")[1];
                     }
                 });
-                //PRINTS MESSAGE BODY
-                //messageContent.parts.forEach((part)=>{   
-                //    console.log('Message Content [' + new Buffer(part.body.data, 'base64').toString() + ']');
-                //});
+                //SAVE ATTACHMENTS :
+                messageContent.parts.forEach((messagePart) => {
+                  if(messagePart.filename != null && messagePart.filename.length > 0 ){
+                    //console.log('ATTACHMENT FILENANAME:['+messagePart.filename+']');
+                    //console.log('ATTACHMENT MIMETYPE:['+messagePart.mimeType+']');
+                    var attachementId = messagePart.body.attachmentId;
+                    if (!fs.existsSync(sender)){
+                      fs.mkdirSync(sender);
+                    }
+                    gmail.users.messages.attachments.get({
+                      id: attachementId,
+                      messageId: message.id,
+                      userId: 'me'
+                    },
+                      (err, res) => {
+                        if (err) return console.log('The API returned an error: ' + err);
+                        const attachment = res.data;
+                        //console.log('ATTACHMENT:['+JSON.stringify(attachment)+']');
+                        console.log('WRITING FILE:['+messagePart.filename+']');
+                        console.log('INTO FOLDER:['+sender+']');
+                        process.chdir(sender);
+                        let wstream = fs.createWriteStream(messagePart.filename);
+                        wstream.write(attachment.data,'base64');
+                        wstream.end();
+                        process.chdir("../");
+                      });
+                  }
+                });
             });
         });
       } else {
